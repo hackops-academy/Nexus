@@ -345,16 +345,6 @@
     }
 
     async function saveFile() {
-        await fetch('/api/file-op', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({action: 'read', path: path}) })).json();
-            if(data.status === 'success') {
-                document.getElementById('fileEditor').value = data.content;
-                document.getElementById('editingPath').value = path;
-                editorModalObj.show();
-            } else alert("Cannot read file");
-        } catch(e) { alert("Failed to open file"); }
-    }
-
-    async function saveFile() {
         await fetch('/api/file-op', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({action: 'save', path: document.getElementById('editingPath').value, content: document.getElementById('fileEditor').value}) });
         editorModalObj.hide();
     }
@@ -373,8 +363,9 @@
             await fetch('/api/kill', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({pid: pid}) });
             loadTasks();
         }
-  }
-  // --- UI CONTROLS ---
+    }
+
+    // --- UI CONTROLS ---
     function toggleSidebar() {
         document.getElementById('sidebar').classList.toggle('active');
         document.getElementById('overlay').classList.toggle('active');

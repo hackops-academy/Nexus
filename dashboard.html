@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>NEXUS CONTROL V3</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.1.0/css/xterm.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        :root {
+            --bg-color: #050505; --panel-bg: #111111;
+            --accent: #00ff9d; --accent-dim: rgba(0, 255, 157, 0.1);
+            --danger: #ff3333; --text-main: #e0e0e0; --border: #333;
+        }
+        body { background-color: var(--bg-color); color: var(--text-main); font-family: 'Segoe UI', monospace; overflow-x: hidden; padding-top: 60px; padding-bottom: 70px; }
+        
+        .mobile-nav { position: fixed; top: 0; left: 0; width: 100%; height: 60px; background: var(--panel-bg); border-bottom: 1px solid var(--border); z-index: 2000; display: flex; align-items: center; padding: 0 15px; }
+        .toggle-btn { background: none; border: none; color: var(--accent); font-size: 24px; cursor: pointer; z-index: 2001; }
+        .sidebar { height: 100vh; position: fixed; top: 60px; left: 0; width: 250px; background: var(--panel-bg); border-right: 1px solid var(--border); padding-top: 20px; z-index: 1000; transition: transform 0.3s ease-in-out; }
+        
+        /* Fixed overlay clicking bug */
+        .sidebar-overlay { visibility: hidden; opacity: 0; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 900; transition: 0.3s; }
+        .sidebar-overlay.active { visibility: visible; opacity: 1; }
+        
+        .nav-link { color: #888; margin: 5px 15px; border-radius: 5px; cursor: pointer; border-left: 3px solid transparent; user-select: none; }
+        .nav-link:hover, .nav-link.active { background: var(--accent-dim); color: var(--accent); border-left: 3px solid var(--accent); }
+        .nav-link i { width: 25px; pointer-events: none; }
+
+        .main-content { margin-left: 250px; padding: 15px; transition: 0.3s; position: relative; z-index: 1;}
+        .card { background: var(--panel-bg); border: 1px solid var(--border); margin-bottom: 15px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
+        .card-header { background: rgba(255,255,255,0.05); border-bottom: 1px solid var(--border); color: var(--accent); font-weight: bold; }
+        
+        #terminal-container { height: calc(100vh - 280px); min-height: 350px; padding: 5px; background: #000; }
+        .xterm .xterm-viewport { overflow-y: auto !important; } 
+        
+        .cmd-input-wrapper { position: fixed; bottom: 0; left: 0; width: 100%; background: rgba(17, 17, 17, 0.95); backdrop-filter: blur(5px); border-top: 1px solid var(--accent); padding: 10px; z-index: 1500; display: flex; align-items: center; gap: 10px; }
+        @media (min-width: 769px) { .cmd-input-wrapper { left: 250px; width: calc(100% - 250px); } }
+
+        .cmd-prompt { color: var(--accent); font-weight: bold; }
+        .cmd-input { background: #000; border: 1px solid #333; color: #fff; flex-grow: 1; padding: 8px 12px; outline: none; border-radius: 4px; font-family: monospace; }
+        .cmd-input:focus { border-color: var(--accent); }
+
+        .btn-ctrl { background: #222; border: 1px solid #444; color: #fff; padding: 8px 15px; border-radius: 4px; font-weight: bold; cursor: pointer; user-select: none; }
+        .btn-ctrl.active { background: var(--danger); border-color: var(--danger); box-shadow: 0 0 10px rgba(255, 51, 51, 0.5); }
+
+        .btn-action { background: #0a0a0a; border: 1px solid #333; color: #aaa; transition: 0.2s; padding: 10px; text-align: center; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; border-radius: 4px;}
+        .btn-action:hover { background: var(--accent-dim); color: var(--accent); border-color: var(--accent); }
+        .btn-action i { font-size: 20px; margin-bottom: 5px; }
+
+        .arsenal-card { cursor: pointer; transition: 0.2s; }
+        .arsenal-card:hover { border-color: var(--accent); box-shadow: 0 0 15px var(--accent-dim); transform: translateY(-2px); }
+
+        @media (max-width: 768px) {
+            .sidebar { transform: translateX(-100%); }
+            .sidebar.active { transform: translateX(0); }
+            .main-content { margin-left: 0; padding-top: 10px; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="mobile-nav">
+    <button class="toggle-btn" onclick="toggleSidebar()"><i class="fas fa-bars"></i></button>
+    <h4 class="ms-3 mb-0" style="color: var(--accent); letter-spacing: 2px;">NEXUS</h4>
+</div>
+<div class="sidebar-overlay" id="overlay" onclick="toggleSidebar()"></div>
+
+<div class="sidebar" id="sidebar">
+    <div class="nav flex-column">
+        <div class="nav-link active" onclick="showTab('dashboard')"><i class="fas fa-home"></i> Dashboard</div>
+        <div class="nav-link" onclick="showTab('files')"><i class="fas fa-folder"></i> Files</div>
+        <div class="nav-link" onclick="showTab('tasks')"><i class="fas fa-microchip"></i> Tasks</div>
+        <div class="nav-link" onclick="showTab('arsenal')"><i class="fas fa-skull"></i> Arsenal</div>
+    </div>
+</div>
+
+<div class="main-content">
+
+    <div id="view-dashboard" class="view-section">
+        <div class="row mb-3 g-2">
+            <div class="col-4 col-md-2"><div class="btn-action" onclick="runSocketCmd('pkg update -y')"><i class="fas fa-sync text-primary"></i><small>Update</small></div></div>
+            <div class="col-4 col-md-2"><div class="btn-action" onclick="runSocketCmd('termux-setup-storage')"><i class="fas fa-sd-card text-warning"></i><small>Storage</small></div></div>
+            <div class="col-4 col-md-2"><div class="btn-action" onclick="runSocketCmd('ifconfig')"><i class="fas fa-wifi text-success"></i><small>Net Info</small></div></div>
+            <div class="col-4 col-md-2"><div class="btn-action" onclick="runSocketCmd('pkg install git python -y')"><i class="fas fa-tools text-info"></i><small>Fix Dev</small></div></div>
+            <div class="col-4 col-md-2"><div class="btn-action" onclick="runSocketCmd('python3 -m http.server 8080')"><i class="fas fa-server text-danger"></i><small>Web Srv</small></div></div>
+            <div class="col-4 col-md-2"><div class="btn-action" onclick="runSocketCmd('clear')"><i class="fas fa-eraser text-secondary"></i><small>Clear</small></div></div>
+        </div>
+
+        <div class="card mb-0">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="fas fa-terminal"></i> SHELL SESSION</span>
+                <div>
+                    <button class="btn btn-sm btn-outline-secondary me-1" onclick="changeFontSize(-1)" title="Zoom Out"><i class="fas fa-minus"></i></button>
+                    <button class="btn btn-sm btn-outline-secondary me-3" onclick="changeFontSize(1)" title="Zoom In"><i class="fas fa-plus"></i></button>
+                    <span class="badge bg-success">ACTIVE</span>
+                </div>
+            </div>
+            <div class="card-body p-0">
+                <div id="terminal-container" onclick="term.focus()"></div>
+            </div>
+        </div>
+
+        <div class="cmd-input-wrapper">
+            <button id="ctrlBtn" class="btn-ctrl" onclick="toggleCtrl()">CTRL</button>
+            <span class="cmd-prompt">$</span>
+            <input type="text" id="cmdInput" class="cmd-input" placeholder="Type command..." autocomplete="off">
+            <button class="btn btn-sm btn-outline-success" onclick="executeCmd()"><i class="fas fa-arrow-right"></i></button>
+        </div>
+    </div>
+
+    <div id="view-files" class="view-section d-none">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <small id="currentPath" class="text-truncate" style="max-width: 50%;"> /</small>
+                <div>
+                    <input type="file" id="fileUploadInput" style="display: none;" onchange="uploadFile()">
+                    <button class="btn btn-sm btn-outline-success me-1" onclick="document.getElementById('fileUploadInput').click()"><i class="fas fa-upload"></i></button>
+                    <button class="btn btn-sm btn-outline-light" onclick="createItem('file')"><i class="fas fa-plus"></i></button>
+                    <button class="btn btn-sm btn-outline-warning" onclick="createItem('folder')"><i class="fas fa-folder-plus"></i></button>
+                </div>
+            </div>
+            <div class="card-body p-0" id="fileList"></div>
+        </div>
+    </div>
+
+    <div id="view-tasks" class="view-section d-none">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between">
+                <span>Process Manager</span>
+                <button class="btn btn-sm btn-outline-info" onclick="loadTasks()"><i class="fas fa-sync"></i></button>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-dark table-hover mb-0" style="font-size: 0.85rem;">
+                    <thead><tr><th>PID</th><th>Name</th><th>Mem%</th><th>Action</th></tr></thead>
+                    <tbody id="taskList"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div id="view-arsenal" class="view-section d-none">
+        <div class="alert alert-dark border-secondary text-center small mb-4">
+            <i class="fas fa-shield-alt text-success"></i> Select a tool below to view intel and deployment options.
+        </div>
+        <div class="row">
+            {% for tool in tools %}
+            <div class="col-md-6 col-lg-4 mb-3">
+                <div class="card h-100 arsenal-card" onclick="openToolModal({{ loop.index0 }})">
+                    <div class="card-body text-center">
+                        <i class="fas fa-box-open fa-2x text-secondary mb-3"></i>
+                        <h5 class="card-title text-success">{{ tool.name }}</h5>
+                        <p class="text-muted small mb-0 text-truncate">{{ tool.url }}</p>
+                        <span class="badge bg-dark border border-secondary mt-2">View Intel</span>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="editorModal" tabindex="-1">
+    <div class="modal-dialog modal-fullscreen">
+        <div class="modal-content bg-dark border-0">
+            <div class="modal-header border-secondary">
+                <h6 class="modal-title text-white">Editor</h6>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-0">
+                <textarea id="fileEditor" class="w-100 h-100 bg-black text-success border-0 p-3" style="font-family: monospace; outline: none; resize: none;"></textarea>
+                <input type="hidden" id="editingPath">
+            </div>
+            <div class="modal-footer border-secondary">
+                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-sm btn-success" onclick="saveFile()">Save</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="toolModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content bg-dark text-light border-secondary">
+            <div class="modal-header border-secondary">
+                <h5 class="modal-title text-success" id="modalToolTitle">Tool Name</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <h6 class="text-secondary border-bottom border-dark pb-2">OPERATOR MANUAL</h6>
+                <p id="modalToolManual" class="small mb-4 text-light" style="line-height: 1.6;"></p>
+                <h6 class="text-secondary border-bottom border-dark pb-2">USE CASES</h6>
+                <ul id="modalToolUseCases" class="small text-info mb-0"></ul>
+            </div>
+            <div class="modal-footer border-secondary d-flex">
+                <button type="button" class="btn btn-outline-primary flex-fill" id="btnClone">Clone (~/)</button>
+                <button type="button" class="btn btn-outline-danger flex-fill" id="btnLaunch">Launch Tool</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.4/socket.io.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xterm@5.1.0/lib/xterm.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.7.0/lib/xterm-addon-fit.js"></script>
+
+<script>
+    const socket = io();
+    let currentDir = '.';
+    let ctrlActive = false;
+    let currentFontSize = 14; 
+    let toolModalInstance;
+
+    // THE FIX: Adding | safe prevents Jinja2 from converting quotes to HTML entities, which caused the JavaScript crash
+    const arsenalTools = {{ tools | tojson | safe }};
+
+    // --- TERMINAL SETUP ---
+    const term = new Terminal({ 
+        theme: { background: '#000', foreground: '#0f0' }, 
+        cursorBlink: true, fontFamily: 'monospace', fontSize: currentFontSize
+    });
+    const fitAddon = new FitAddon.FitAddon();
+    term.loadAddon(fitAddon);
+    term.open(document.getElementById('terminal-container'));
+    
+    setTimeout(() => fitAddon.fit(), 200);
+    window.addEventListener('resize', () => { if(!document.getElementById('view-dashboard').classList.contains('d-none')) fitAddon.fit(); });
+
+    function changeFontSize(change) {
+        currentFontSize = Math.max(8, Math.min(32, currentFontSize + change));
+        term.options.fontSize = currentFontSize;
+        fitAddon.fit(); term.focus();
+    }
+
+    socket.on('term_output', (msg) => term.write(msg.data));
+
+    term.onData(data => {
+        if (ctrlActive && data.length === 1 && /[A-Za-z]/.test(data)) {
+            socket.emit('run_command', {command: String.fromCharCode(data.toUpperCase().charCodeAt(0) - 64), is_raw: true});
+            toggleCtrl(); 
+        } else socket.emit('run_command', {command: data, is_raw: true});
+    });
+
+    function toggleCtrl() {
+        ctrlActive = !ctrlActive;
+        document.getElementById('ctrlBtn').classList.toggle('active', ctrlActive);
+        if (document.activeElement.id !== 'cmdInput') term.focus();
+    }
+
+    document.getElementById('cmdInput').addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') executeCmd();
+        else if (ctrlActive && /[a-zA-Z]/.test(e.key) && e.key.length === 1) {
+            e.preventDefault();
+            socket.emit('run_command', {command: String.fromCharCode(e.key.toUpperCase().charCodeAt(0) - 64), is_raw: true});
+            this.value = ''; toggleCtrl(); 
+        }
+    });
+
+    function executeCmd() {
+        const input = document.getElementById('cmdInput');
+        if(input.value.trim()) {
+            socket.emit('run_command', {command: input.value, is_raw: false});
+            input.value = ''; term.scrollToBottom(); term.focus();
+        }
+    }
+
+    function runSocketCmd(cmd) {
+        showTab('dashboard');
+        socket.emit('run_command', {command: cmd, is_raw: false});
+    }
+
+    // --- ARSENAL LOGIC ---
+    function openToolModal(index) {
+        if (!toolModalInstance) toolModalInstance = new bootstrap.Modal(document.getElementById('toolModal'));
+        const tool = arsenalTools[index];
+        document.getElementById('modalToolTitle').innerText = tool.name;
+        document.getElementById('modalToolManual').innerText = tool.manual;
+        
+        const ucList = document.getElementById('modalToolUseCases');
+        ucList.innerHTML = tool.use_cases.map(uc => `<li>${uc}</li>`).join('');
+        
+        document.getElementById('btnClone').onclick = () => { runSocketCmd(`cd ~ && git clone ${tool.url}`); toolModalInstance.hide(); };
+        document.getElementById('btnLaunch').onclick = () => { runSocketCmd(tool.run_cmd); toolModalInstance.hide(); };
+        toolModalInstance.show();
+    }
+
+    // --- FILE MANAGER ---
+    async function uploadFile() {
+        const fileInput = document.getElementById('fileUploadInput');
+        if(!fileInput.files[0]) return;
+        const formData = new FormData();
+        formData.append('file', fileInput.files[0]);
+        formData.append('path', currentDir);
+        try {
+            const res = await (await fetch('/api/upload', { method: 'POST', body: formData })).json();
+            if(res.status === 'success') loadPath(currentDir);
+            else alert("Error: " + res.message);
+        } catch(e) { alert("Upload failed"); }
+        fileInput.value = ''; 
+    }
+
+    async function loadPath(path) {
+        currentDir = path;
+        const data = await (await fetch('/api/files', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({path: path}) })).json();
+        if (data.status !== "success") return;
+        document.getElementById('currentPath').innerText = data.current_path;
+        const list = document.getElementById('fileList');
+        list.innerHTML = `<div class="p-3 border-bottom border-secondary text-muted" onclick="loadPath('${data.current_path.replace(/\\/g, "/")}/..')" style="cursor:pointer"><i class="fas fa-arrow-left me-2"></i> Back</div>`;
+        data.items.forEach(item => {
+            const icon = item.is_dir ? 'fa-folder text-warning' : 'fa-file-code text-info';
+            const escapedPath = item.path.replace(/\\/g, "/").replace(/'/g, "\\'");
+            list.innerHTML += `<div class="d-flex justify-content-between align-items-center p-3 border-bottom border-secondary"><span onclick="${item.is_dir ? `loadPath('${escapedPath}')` : `openEditor('${escapedPath}')`}" class="text-truncate" style="cursor:pointer; flex-grow:1"><i class="fas ${icon} me-3"></i> ${item.name}</span><i class="fas fa-trash-alt text-danger ms-3" onclick="deleteItem('${escapedPath}')" style="cursor:pointer"></i></div>`;
+        });
+    }
+
+    async function deleteItem(path) {
+        if(confirm(`Delete ${path.split('/').pop()}?`)) {
+            await fetch('/api/file-op', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({action: 'delete', path: path}) });
+            loadPath(currentDir);
+        }
+    }
+
+    async function createItem(type) {
+        const name = prompt(`Enter ${type} name:`);
+        if(name) {
+            await fetch('/api/file-op', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({action: type === 'folder' ? 'create_folder' : 'create_file', path: currentDir + '/' + name}) });
+            loadPath(currentDir);
+        }
+    }
+
+    // --- EDITOR ---
+    let editorModalObj;
+    async function openEditor(path) {
+        if(!editorModalObj) editorModalObj = new bootstrap.Modal(document.getElementById('editorModal'));
+        try {
+            const data = await (await fetch('/api/file-op', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({action: 'read', path: path}) })).json();
+            if(data.status === 'success') {
+                document.getElementById('fileEditor').value = data.content;
+                document.getElementById('editingPath').value = path;
+                editorModalObj.show();
+            } else alert("Cannot read file");
+        } catch(e) { alert("Failed to open file"); }
+    }
+
+    async function saveFile() {
+        await fetch('/api/file-op', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({action: 'read', path: path}) })).json();
+            if(data.status === 'success') {
+                document.getElementById('fileEditor').value = data.content;
+                document.getElementById('editingPath').value = path;
+                editorModalObj.show();
+            } else alert("Cannot read file");
+        } catch(e) { alert("Failed to open file"); }
+    }
+
+    async function saveFile() {
+        await fetch('/api/file-op', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({action: 'save', path: document.getElementById('editingPath').value, content: document.getElementById('fileEditor').value}) });
+        editorModalObj.hide();
+    }
+
+    // --- TASK MANAGER ---
+    async function loadTasks() {
+        try {
+            const procs = await (await fetch('/api/processes')).json();
+            const list = document.getElementById('taskList');
+            list.innerHTML = procs.map(p => `<tr><td>${p.pid}</td><td class="text-truncate" style="max-width:100px">${p.name}</td><td>${(p.memory_percent||0).toFixed(1)}%</td><td>${p.pid !== "ERR" ? `<button class="btn btn-xs btn-danger p-1" onclick="killProc(${p.pid})">Kill</button>` : `<span class="badge bg-secondary">-</span>`}</td></tr>`).join('');
+        } catch(e) {}
+    }
+
+    async function killProc(pid) {
+        if(confirm(`Kill process ${pid}?`)) {
+            await fetch('/api/kill', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({pid: pid}) });
+            loadTasks();
+        }
+  }
+  // --- UI CONTROLS ---
+    function toggleSidebar() {
+        document.getElementById('sidebar').classList.toggle('active');
+        document.getElementById('overlay').classList.toggle('active');
+    }
+
+    function showTab(tabName) {
+        document.querySelectorAll('.view-section').forEach(el => el.classList.add('d-none'));
+        document.querySelectorAll('.nav-link').forEach(el => el.classList.remove('active'));
+        document.getElementById(`view-${tabName}`).classList.remove('d-none');
+        
+        const links = document.querySelectorAll('.nav-link');
+        if(tabName == 'dashboard') { links[0].classList.add('active'); setTimeout(() => { fitAddon.fit(); term.focus(); }, 200); }
+        if(tabName == 'files') { links[1].classList.add('active'); loadPath(currentDir); }
+        if(tabName == 'tasks') { links[2].classList.add('active'); loadTasks(); }
+        if(tabName == 'arsenal') links[3].classList.add('active');
+
+        if(window.innerWidth < 768 && document.getElementById('sidebar').classList.contains('active')) toggleSidebar();
+        document.querySelector('.cmd-input-wrapper').style.display = (tabName === 'dashboard') ? 'flex' : 'none';
+    }
+
+    window.onload = () => { loadPath('.'); term.focus(); };
+</script>
+</body>
+</html>

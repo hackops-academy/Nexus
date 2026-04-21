@@ -1,0 +1,846 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>NEXUS CONTROL V4</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.1.0/css/xterm.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --bg: #050505; --panel: #0e0e0e; --panel2: #161616;
+            --accent: #00ff9d; --accent-dim: rgba(0,255,157,0.08);
+            --accent-glow: rgba(0,255,157,0.25);
+            --danger: #ff3333; --warn: #ffaa00; --info: #00aaff;
+            --text: #d0d0d0; --muted: #555; --border: #222;
+        }
+        * { box-sizing: border-box; }
+        body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', monospace; overflow-x: hidden; padding-top: 58px; padding-bottom: 60px; }
+
+        /* ── NAV ── */
+        .mobile-nav { position: fixed; top: 0; left: 0; width: 100%; height: 58px; background: var(--panel); border-bottom: 1px solid var(--border); z-index: 2000; display: flex; align-items: center; padding: 0 14px; gap: 12px; }
+        .toggle-btn { background: none; border: none; color: var(--accent); font-size: 22px; cursor: pointer; }
+        .nav-title { color: var(--accent); letter-spacing: 3px; font-weight: 700; font-size: 1rem; margin: 0; }
+        .nav-badges { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+        .role-badge { font-size: 0.65rem; padding: 3px 8px; border-radius: 20px; font-weight: 700; letter-spacing: 1px; }
+        .role-root { background: rgba(255,51,51,0.15); color: var(--danger); border: 1px solid var(--danger); }
+        .role-user { background: rgba(0,170,255,0.12); color: var(--info); border: 1px solid var(--info); }
+        .session-count { font-size: 0.65rem; color: var(--accent); border: 1px solid var(--accent); border-radius: 20px; padding: 3px 8px; }
+
+        /* ── SIDEBAR ── */
+        .sidebar { height: calc(100vh - 58px); position: fixed; top: 58px; left: 0; width: 240px; background: var(--panel); border-right: 1px solid var(--border); padding: 14px 0; z-index: 1000; transition: transform .3s ease; overflow-y: auto; }
+        .sidebar-section { font-size: 0.6rem; color: var(--muted); letter-spacing: 2px; padding: 10px 18px 4px; text-transform: uppercase; }
+        .nav-link { color: #666; margin: 2px 10px; padding: 9px 12px; border-radius: 6px; cursor: pointer; border-left: 3px solid transparent; user-select: none; display: flex; align-items: center; gap: 10px; transition: .15s; font-size: 0.88rem; }
+        .nav-link:hover, .nav-link.active { background: var(--accent-dim); color: var(--accent); border-left-color: var(--accent); }
+        .nav-link i { width: 18px; text-align: center; font-size: 0.85rem; }
+        .sidebar-overlay { visibility: hidden; opacity: 0; position: fixed; inset: 0; background: rgba(0,0,0,.7); z-index: 900; transition: .3s; }
+        .sidebar-overlay.active { visibility: visible; opacity: 1; }
+
+        /* ── MAIN ── */
+        .main-content { margin-left: 240px; padding: 12px; transition: .3s; }
+        .card { background: var(--panel); border: 1px solid var(--border); margin-bottom: 12px; }
+        .card-header { background: var(--panel2); border-bottom: 1px solid var(--border); color: var(--accent); font-weight: 600; font-size: 0.82rem; letter-spacing: 1px; padding: 10px 14px; display: flex; align-items: center; justify-content: space-between; }
+
+        /* ── TERMINAL ── */
+        #terminal-container { height: calc(100vh - 270px); min-height: 300px; background: #000; padding: 4px; }
+        .xterm .xterm-viewport { overflow-y: auto !important; }
+
+        /* ── SESSION TABS ── */
+        .session-tabs { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; padding: 8px 12px; background: var(--panel2); border-bottom: 1px solid var(--border); }
+        .session-tab { font-size: 0.72rem; padding: 4px 10px; border-radius: 4px; border: 1px solid var(--border); color: #666; cursor: pointer; transition: .15s; display: flex; align-items: center; gap: 6px; }
+        .session-tab.active { background: var(--accent-dim); color: var(--accent); border-color: var(--accent); }
+        .session-tab .close-tab { color: var(--danger); font-size: 0.7rem; }
+        .btn-new-session { font-size: 0.72rem; padding: 4px 10px; border-radius: 4px; border: 1px dashed var(--muted); color: var(--muted); background: none; cursor: pointer; transition: .15s; }
+        .btn-new-session:hover { border-color: var(--accent); color: var(--accent); }
+
+        /* ── CMD BAR ── */
+        .cmd-input-wrapper { position: fixed; bottom: 0; left: 0; width: 100%; background: rgba(14,14,14,.97); backdrop-filter: blur(6px); border-top: 1px solid var(--accent); padding: 8px 12px; z-index: 1500; display: flex; align-items: center; gap: 8px; }
+        @media(min-width:769px) { .cmd-input-wrapper { left: 240px; width: calc(100% - 240px); } }
+        .cmd-prompt { color: var(--accent); font-weight: 700; font-size: 0.9rem; white-space: nowrap; }
+        .cmd-input { background: #000; border: 1px solid #2a2a2a; color: #fff; flex-grow: 1; padding: 7px 10px; outline: none; border-radius: 4px; font-family: monospace; font-size: 0.88rem; }
+        .cmd-input:focus { border-color: var(--accent); }
+        .btn-ctrl { background: #1a1a1a; border: 1px solid #333; color: #ccc; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 0.75rem; font-weight: 700; user-select: none; transition: .15s; }
+        .btn-ctrl.active { background: var(--danger); border-color: var(--danger); color: #fff; }
+
+        /* ── QUICK ACTIONS ── */
+        .btn-action { background: var(--panel2); border: 1px solid var(--border); color: #777; transition: .15s; padding: 10px 6px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; border-radius: 6px; height: 70px; }
+        .btn-action:hover { background: var(--accent-dim); color: var(--accent); border-color: var(--accent); }
+        .btn-action i { font-size: 18px; margin-bottom: 4px; }
+        .btn-action small { font-size: 0.62rem; }
+
+        /* ── STAT BARS ── */
+        .stat-row { display: flex; flex-direction: column; gap: 8px; }
+        .stat-item label { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; display: flex; justify-content: space-between; margin-bottom: 2px; }
+        .stat-item label span { color: var(--text); }
+        .stat-bar { height: 5px; background: #1a1a1a; border-radius: 3px; overflow: hidden; }
+        .stat-fill { height: 100%; border-radius: 3px; transition: width .5s ease; }
+        .fill-cpu { background: linear-gradient(90deg, #00aaff, #0055ff); }
+        .fill-ram { background: linear-gradient(90deg, #00ff9d, #009955); }
+        .fill-disk { background: linear-gradient(90deg, #ffaa00, #ff5500); }
+
+        /* ── MINI GRAPH ── */
+        .mini-graph { width: 100%; height: 50px; }
+
+        /* ── TASKS ── */
+        .task-table { font-size: 0.78rem; }
+        .task-table th { color: var(--muted); font-weight: 600; font-size: 0.68rem; letter-spacing: 1px; text-transform: uppercase; border-color: var(--border); padding: 6px 10px; }
+        .task-table td { border-color: var(--border); padding: 5px 10px; color: var(--text); vertical-align: middle; }
+        .task-table tr:hover td { background: var(--accent-dim); }
+        .cpu-bar { height: 3px; background: #1a1a1a; border-radius: 2px; margin-top: 3px; }
+        .cpu-fill { height: 100%; background: var(--info); border-radius: 2px; transition: width .3s; }
+        .status-badge { font-size: 0.6rem; padding: 2px 6px; border-radius: 10px; }
+        .s-running { background: rgba(0,255,157,.12); color: var(--accent); }
+        .s-sleeping { background: rgba(85,85,85,.3); color: #555; }
+        .s-stopped { background: rgba(255,51,51,.12); color: var(--danger); }
+
+        /* ── FILES ── */
+        .file-row { display: flex; align-items: center; padding: 8px 14px; border-bottom: 1px solid var(--border); gap: 10px; cursor: pointer; transition: .12s; }
+        .file-row:hover { background: var(--accent-dim); }
+        .file-row .file-icon { font-size: 1rem; width: 22px; text-align: center; flex-shrink: 0; }
+        .file-row .file-name { flex-grow: 1; font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .file-row .file-meta { font-size: 0.65rem; color: var(--muted); text-align: right; flex-shrink: 0; line-height: 1.4; }
+        .file-row .file-perms { font-size: 0.6rem; font-family: monospace; color: #444; }
+        .file-actions { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
+        .file-btn { background: none; border: none; color: var(--muted); font-size: 0.78rem; padding: 4px 6px; cursor: pointer; border-radius: 3px; transition: .12s; }
+        .file-btn:hover { color: var(--accent); background: var(--accent-dim); }
+        .file-btn.danger:hover { color: var(--danger); background: rgba(255,51,51,.1); }
+        .file-search-bar { display: flex; gap: 8px; padding: 8px 12px; background: var(--panel2); border-bottom: 1px solid var(--border); }
+        .file-search-input { background: #000; border: 1px solid var(--border); color: var(--text); flex-grow: 1; padding: 6px 10px; border-radius: 4px; font-size: 0.82rem; outline: none; }
+        .file-search-input:focus { border-color: var(--accent); }
+
+        /* ── ARSENAL ── */
+        .arsenal-card { cursor: pointer; transition: .2s; border: 1px solid var(--border); }
+        .arsenal-card:hover { border-color: var(--accent); box-shadow: 0 0 18px var(--accent-glow); transform: translateY(-2px); }
+        .arsenal-badge { font-size: 0.6rem; padding: 2px 8px; border-radius: 10px; background: var(--panel2); border: 1px solid var(--border); color: var(--muted); }
+
+        /* ── RESPONSIVE ── */
+        @media(max-width: 768px) {
+            .sidebar { transform: translateX(-100%); }
+            .sidebar.active { transform: translateX(0); }
+            .main-content { margin-left: 0; padding: 8px; }
+        }
+
+        /* ── UTILS ── */
+        .text-accent { color: var(--accent) !important; }
+        .text-warn { color: var(--warn) !important; }
+        .border-accent { border-color: var(--accent) !important; }
+        ::-webkit-scrollbar { width: 4px; height: 4px; }
+        ::-webkit-scrollbar-track { background: #0a0a0a; }
+        ::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 2px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+    </style>
+</head>
+<body>
+
+<!-- ═══ TOP NAV ═══ -->
+<div class="mobile-nav">
+    <button class="toggle-btn" onclick="toggleSidebar()"><i class="fas fa-bars"></i></button>
+    <h4 class="nav-title">NEXUS</h4>
+    <small style="color:var(--muted);font-size:.65rem;letter-spacing:1px;">V4</small>
+    <div class="nav-badges">
+        <span class="role-badge" id="roleBadge">USER</span>
+        <span class="session-count" id="sessionCountBadge">1 SESSION</span>
+    </div>
+</div>
+
+<div class="sidebar-overlay" id="overlay" onclick="toggleSidebar()"></div>
+
+<!-- ═══ SIDEBAR ═══ -->
+<div class="sidebar" id="sidebar">
+    <div class="sidebar-section">Navigation</div>
+    <div class="nav-link active" onclick="showTab('dashboard')"><i class="fas fa-home"></i> Dashboard</div>
+    <div class="nav-link" onclick="showTab('files')"><i class="fas fa-folder-open"></i> Files</div>
+    <div class="nav-link" onclick="showTab('tasks')"><i class="fas fa-microchip"></i> Tasks</div>
+    <div class="nav-link" onclick="showTab('arsenal')"><i class="fas fa-skull"></i> Arsenal</div>
+    <div class="sidebar-section" style="margin-top:10px;">System</div>
+    <div class="nav-link" onclick="newSession()"><i class="fas fa-plus-circle"></i> New Session</div>
+    <div class="nav-link" onclick="checkRole()"><i class="fas fa-user-shield"></i> Check Role</div>
+</div>
+
+<!-- ═══ MAIN ═══ -->
+<div class="main-content">
+
+    <!-- ── DASHBOARD ── -->
+    <div id="view-dashboard" class="view-section">
+        <!-- Quick Actions -->
+        <div class="row g-2 mb-3">
+            <div class="col-4 col-md-2"><div class="btn-action" onclick="runCmd('pkg update -y')"><i class="fas fa-sync text-primary"></i><small>Update</small></div></div>
+            <div class="col-4 col-md-2"><div class="btn-action" onclick="runCmd('termux-setup-storage')"><i class="fas fa-sd-card text-warning"></i><small>Storage</small></div></div>
+            <div class="col-4 col-md-2"><div class="btn-action" onclick="runCmd('ifconfig')"><i class="fas fa-wifi text-success"></i><small>Net Info</small></div></div>
+            <div class="col-4 col-md-2"><div class="btn-action" onclick="runCmd('pkg install git python -y')"><i class="fas fa-tools text-info"></i><small>Fix Dev</small></div></div>
+            <div class="col-4 col-md-2"><div class="btn-action" onclick="runCmd('python3 -m http.server 8080')"><i class="fas fa-server text-danger"></i><small>Web Srv</small></div></div>
+            <div class="col-4 col-md-2"><div class="btn-action" onclick="runCmd('clear')"><i class="fas fa-eraser" style="color:var(--muted)"></i><small>Clear</small></div></div>
+        </div>
+
+        <!-- System Stats -->
+        <div class="row g-2 mb-3">
+            <div class="col-md-8">
+                <div class="card h-100">
+                    <div class="card-header"><i class="fas fa-chart-area me-2"></i>SYSTEM MONITOR <span style="color:var(--muted);font-size:.65rem;font-weight:400" id="statsUpdated"></span></div>
+                    <div class="card-body p-3">
+                        <div class="stat-row">
+                            <div class="stat-item">
+                                <label>CPU Usage <span id="cpuVal">--</span></label>
+                                <div class="stat-bar"><div class="stat-fill fill-cpu" id="cpuBar" style="width:0%"></div></div>
+                            </div>
+                            <div class="stat-item">
+                                <label>RAM Usage <span id="ramVal">--</span></label>
+                                <div class="stat-bar"><div class="stat-fill fill-ram" id="ramBar" style="width:0%"></div></div>
+                            </div>
+                            <div class="stat-item">
+                                <label>Disk Usage <span id="diskVal">--</span></label>
+                                <div class="stat-bar"><div class="stat-fill fill-disk" id="diskBar" style="width:0%"></div></div>
+                            </div>
+                        </div>
+                        <div class="mt-3">
+                            <small style="color:var(--muted);font-size:.65rem;letter-spacing:1px;">CPU HISTORY</small>
+                            <svg class="mini-graph mt-1" id="cpuGraph" viewBox="0 0 200 50" preserveAspectRatio="none">
+                                <polyline id="cpuLine" points="" fill="none" stroke="#00aaff" stroke-width="1.5"/>
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card h-100">
+                    <div class="card-header"><i class="fas fa-network-wired me-2"></i>NETWORK</div>
+                    <div class="card-body p-3">
+                        <div class="d-flex flex-column gap-2">
+                            <div style="font-size:.7rem;color:var(--muted);">SENT <span class="text-accent" id="netSent">--</span></div>
+                            <div style="font-size:.7rem;color:var(--muted);">RECV <span style="color:var(--info)" id="netRecv">--</span></div>
+                            <hr style="border-color:var(--border);margin:4px 0">
+                            <div class="d-flex gap-2 mt-1">
+                                <div class="text-center flex-fill">
+                                    <div style="font-size:1.1rem;font-weight:700;color:var(--accent)" id="netSentRate">--</div>
+                                    <div style="font-size:.6rem;color:var(--muted);">KB/s ↑</div>
+                                </div>
+                                <div class="text-center flex-fill">
+                                    <div style="font-size:1.1rem;font-weight:700;color:var(--info)" id="netRecvRate">--</div>
+                                    <div style="font-size:.6rem;color:var(--muted);">KB/s ↓</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Terminal with session tabs -->
+        <div class="card mb-0">
+            <div class="card-header">
+                <span><i class="fas fa-terminal me-2"></i>SHELL SESSION</span>
+                <div class="d-flex gap-2 align-items-center">
+                    <button class="btn btn-sm btn-outline-secondary" onclick="changeFontSize(-1)" title="Zoom Out"><i class="fas fa-minus"></i></button>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="changeFontSize(1)" title="Zoom In"><i class="fas fa-plus"></i></button>
+                    <span class="badge" style="background:var(--accent-dim);color:var(--accent);border:1px solid var(--accent)">LIVE</span>
+                </div>
+            </div>
+            <div class="session-tabs" id="sessionTabs">
+                <!-- tabs injected by JS -->
+                <button class="btn-new-session" onclick="newSession()"><i class="fas fa-plus"></i> New</button>
+            </div>
+            <div id="terminal-container" onclick="term.focus()"></div>
+        </div>
+
+        <div class="cmd-input-wrapper" id="cmdBar">
+            <button id="ctrlBtn" class="btn-ctrl" onclick="toggleCtrl()">CTRL</button>
+            <span class="cmd-prompt" id="promptUser">$</span>
+            <input type="text" id="cmdInput" class="cmd-input" placeholder="Type command..." autocomplete="off" spellcheck="false">
+            <button class="btn btn-sm" style="background:var(--accent-dim);border:1px solid var(--accent);color:var(--accent)" onclick="executeCmd()"><i class="fas fa-arrow-right"></i></button>
+        </div>
+    </div>
+
+    <!-- ── FILES ── -->
+    <div id="view-files" class="view-section d-none">
+        <div class="card">
+            <div class="card-header">
+                <small id="currentPath" class="text-truncate" style="max-width:55%;color:var(--text)">~</small>
+                <div class="d-flex gap-1">
+                    <input type="file" id="fileUploadInput" style="display:none" onchange="uploadFile()">
+                    <button class="btn btn-sm btn-outline-success" onclick="document.getElementById('fileUploadInput').click()" title="Upload"><i class="fas fa-upload"></i></button>
+                    <button class="btn btn-sm btn-outline-light" onclick="createItem('file')" title="New File"><i class="fas fa-file-plus"></i></button>
+                    <button class="btn btn-sm btn-outline-warning" onclick="createItem('folder')" title="New Folder"><i class="fas fa-folder-plus"></i></button>
+                </div>
+            </div>
+            <div class="file-search-bar">
+                <input type="text" class="file-search-input" id="fileSearchInput" placeholder="Search files..." oninput="searchFiles()">
+                <button class="btn btn-sm" style="background:none;border:1px solid var(--border);color:var(--muted)" onclick="clearSearch()"><i class="fas fa-times"></i></button>
+            </div>
+            <div id="fileList"></div>
+        </div>
+    </div>
+
+    <!-- ── TASKS ── -->
+    <div id="view-tasks" class="view-section d-none">
+        <!-- Live Stats mini bar -->
+        <div class="row g-2 mb-2">
+            <div class="col-4">
+                <div class="card p-2 text-center">
+                    <div style="font-size:1.4rem;font-weight:700;color:var(--info)" id="t-cpu">--</div>
+                    <div style="font-size:.6rem;color:var(--muted);">CPU %</div>
+                </div>
+            </div>
+            <div class="col-4">
+                <div class="card p-2 text-center">
+                    <div style="font-size:1.4rem;font-weight:700;color:var(--accent)" id="t-ram">--</div>
+                    <div style="font-size:.6rem;color:var(--muted);">RAM %</div>
+                </div>
+            </div>
+            <div class="col-4">
+                <div class="card p-2 text-center">
+                    <div style="font-size:1.4rem;font-weight:700;color:var(--warn)" id="t-disk">--</div>
+                    <div style="font-size:.6rem;color:var(--muted);">DISK %</div>
+                </div>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-header">
+                <span>PROCESS MANAGER</span>
+                <button class="btn btn-sm" style="background:none;border:1px solid var(--border);color:var(--muted)" onclick="loadTasks()"><i class="fas fa-sync"></i></button>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-dark table-hover mb-0 task-table">
+                    <thead><tr><th>PID</th><th>NAME</th><th>CPU%</th><th>MEM%</th><th>STATUS</th><th>THREADS</th><th>ACTION</th></tr></thead>
+                    <tbody id="taskList"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── ARSENAL ── -->
+    <div id="view-arsenal" class="view-section d-none">
+        <div class="alert mb-3" style="background:var(--panel2);border:1px solid var(--border);font-size:.8rem;color:var(--muted);">
+            <i class="fas fa-shield-alt text-success me-2"></i>Each tool launches in an <strong style="color:var(--accent)">isolated session</strong> — your main shell stays alive.
+        </div>
+        <div class="row g-2">
+            {% for tool in tools %}
+            <div class="col-md-6 col-lg-4">
+                <div class="card h-100 arsenal-card" onclick="openToolModal({{ loop.index0 }})">
+                    <div class="card-body text-center py-4">
+                        <i class="fas fa-box-open fa-2x mb-3" style="color:var(--muted)"></i>
+                        <h6 class="text-accent mb-1">{{ tool.name }}</h6>
+                        <p class="text-muted mb-2" style="font-size:.7rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ tool.url }}</p>
+                        <span class="arsenal-badge">VIEW INTEL</span>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+</div><!-- /main-content -->
+
+<!-- ═══ MODALS ═══ -->
+
+<!-- File Editor -->
+<div class="modal fade" id="editorModal" tabindex="-1">
+    <div class="modal-dialog modal-fullscreen">
+        <div class="modal-content" style="background:var(--panel);border:0">
+            <div class="modal-header" style="background:var(--panel2);border-color:var(--border)">
+                <span class="text-accent" style="font-size:.85rem" id="editorTitle">Editor</span>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-0" style="overflow:hidden">
+                <textarea id="fileEditor" class="w-100 h-100 p-3" style="background:#000;color:#0f0;border:0;font-family:monospace;font-size:.85rem;outline:none;resize:none"></textarea>
+                <input type="hidden" id="editingPath">
+            </div>
+            <div class="modal-footer" style="background:var(--panel2);border-color:var(--border)">
+                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-sm btn-success" onclick="saveFile()">Save</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Chmod Modal -->
+<div class="modal fade" id="chmodModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-content" style="background:var(--panel);border:1px solid var(--border)">
+            <div class="modal-header" style="background:var(--panel2);border-color:var(--border)">
+                <span class="text-accent" style="font-size:.85rem">Change Permissions</span>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p id="chmodFilename" style="font-size:.75rem;color:var(--muted);word-break:break-all"></p>
+                <label style="font-size:.72rem;color:var(--muted)">Octal (e.g. 755, 644)</label>
+                <input type="text" id="chmodInput" class="form-control form-control-sm mt-1" style="background:#000;color:#fff;border-color:var(--border)" placeholder="755" maxlength="4">
+                <small style="color:var(--muted);font-size:.65rem;margin-top:6px;display:block">Current: <span id="chmodCurrent" style="color:var(--accent)"></span></small>
+            </div>
+            <div class="modal-footer" style="background:var(--panel2);border-color:var(--border)">
+                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-sm btn-warning" onclick="applyChmod()">Apply</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Tool Modal -->
+<div class="modal fade" id="toolModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content" style="background:var(--panel);border:1px solid var(--border)">
+            <div class="modal-header" style="background:var(--panel2);border-color:var(--border)">
+                <h6 class="modal-title text-accent" id="modalToolTitle">Tool</h6>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div style="font-size:.65rem;color:var(--muted);letter-spacing:1px;border-bottom:1px solid var(--border);padding-bottom:6px;margin-bottom:10px;">OPERATOR MANUAL</div>
+                <p id="modalToolManual" style="font-size:.82rem;line-height:1.6;color:var(--text)"></p>
+                <div style="font-size:.65rem;color:var(--muted);letter-spacing:1px;border-bottom:1px solid var(--border);padding-bottom:6px;margin-bottom:10px;">USE CASES</div>
+                <ul id="modalToolUseCases" style="font-size:.8rem;color:var(--info);padding-left:18px"></ul>
+            </div>
+            <div class="modal-footer" style="background:var(--panel2);border-color:var(--border)">
+                <button type="button" class="btn btn-sm btn-outline-primary flex-fill" id="btnClone">Clone (~/)</button>
+                <button type="button" class="btn btn-sm btn-outline-danger flex-fill" id="btnLaunch"><i class="fas fa-rocket me-1"></i>Launch in New Session</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ SCRIPTS ═══ -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.4/socket.io.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xterm@5.1.0/lib/xterm.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.7.0/lib/xterm-addon-fit.js"></script>
+
+<script>
+// ══════════════════════════════════════════════
+//  NEXUS CONTROL V4 — Client JS
+// ══════════════════════════════════════════════
+
+const arsenalTools = {{ tools | tojson | safe }};
+
+// ── TERMINAL SETUP ──
+let currentFontSize = 14;
+const term = new Terminal({
+    theme: { background: '#000', foreground: '#00ff9d', cursor: '#00ff9d', selection: 'rgba(0,255,157,0.2)' },
+    cursorBlink: true, fontFamily: 'monospace', fontSize: currentFontSize, allowTransparency: true
+});
+const fitAddon = new FitAddon.FitAddon();
+term.loadAddon(fitAddon);
+term.open(document.getElementById('terminal-container'));
+setTimeout(() => fitAddon.fit(), 200);
+window.addEventListener('resize', () => { if (activeTab === 'dashboard') fitAddon.fit(); });
+
+function changeFontSize(d) {
+    currentFontSize = Math.max(8, Math.min(32, currentFontSize + d));
+    term.options.fontSize = currentFontSize;
+    fitAddon.fit(); term.focus();
+}
+
+// ── SOCKET ──
+const socket = io();
+socket.on('connect', () => console.log('[NEXUS] Socket connected'));
+socket.on('term_output', (msg) => term.write(msg.data));
+socket.on('session_ready', () => updateSessionUI());
+
+// ── SESSION MANAGEMENT ──
+let sessionCount = 1;
+let activeTab = 'dashboard';
+
+function newSession() {
+    sessionCount++;
+    socket.emit('new_session');
+    term.clear();
+    term.writeln('\r\n\x1b[1;32m[NEXUS] New session started.\x1b[0m\r\n');
+    updateSessionUI();
+    showTab('dashboard');
+}
+
+function updateSessionUI() {
+    const badge = document.getElementById('sessionCountBadge');
+    if (badge) badge.textContent = sessionCount + ' SESSION' + (sessionCount > 1 ? 'S' : '');
+}
+
+// ── CTRL MODE ──
+let ctrlActive = false;
+function toggleCtrl() {
+    ctrlActive = !ctrlActive;
+    document.getElementById('ctrlBtn').classList.toggle('active', ctrlActive);
+}
+
+// ── COMMAND HISTORY ──
+let cmdHistory = [];
+let historyIdx = -1;
+
+term.onData(data => {
+    if (ctrlActive && data.length === 1 && /[A-Za-z]/.test(data)) {
+        socket.emit('run_command', { command: String.fromCharCode(data.toUpperCase().charCodeAt(0) - 64), is_raw: true });
+        toggleCtrl();
+    } else {
+        socket.emit('run_command', { command: data, is_raw: true });
+    }
+});
+
+const cmdInput = document.getElementById('cmdInput');
+cmdInput.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') {
+        executeCmd();
+    } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (historyIdx < cmdHistory.length - 1) {
+            historyIdx++;
+            this.value = cmdHistory[cmdHistory.length - 1 - historyIdx] || '';
+            // move cursor to end
+            setTimeout(() => this.setSelectionRange(this.value.length, this.value.length), 0);
+        }
+    } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (historyIdx > 0) {
+            historyIdx--;
+            this.value = cmdHistory[cmdHistory.length - 1 - historyIdx] || '';
+        } else {
+            historyIdx = -1;
+            this.value = '';
+        }
+    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        // default browser behavior for cursor movement in input — no override needed
+    } else if (ctrlActive && /[a-zA-Z]/.test(e.key) && e.key.length === 1) {
+        e.preventDefault();
+        socket.emit('run_command', { command: String.fromCharCode(e.key.toUpperCase().charCodeAt(0) - 64), is_raw: true });
+        this.value = ''; toggleCtrl();
+    }
+});
+
+function executeCmd() {
+    const val = cmdInput.value.trim();
+    if (!val) return;
+    cmdHistory.push(val);
+    if (cmdHistory.length > 200) cmdHistory.shift();
+    historyIdx = -1;
+    socket.emit('run_command', { command: val, is_raw: false });
+    cmdInput.value = '';
+    term.scrollToBottom(); term.focus();
+}
+
+function runCmd(cmd) {
+    showTab('dashboard');
+    socket.emit('run_command', { command: cmd, is_raw: false });
+}
+
+// ── ROLE CHECK ──
+function checkRole() {
+    socket.emit('run_command', { command: 'whoami', is_raw: false });
+    // We detect root from the prompt color / whoami output; simple heuristic:
+    const isRoot = (document.getElementById('promptUser').textContent === '#');
+    const badge = document.getElementById('roleBadge');
+    if (isRoot) {
+        badge.className = 'role-badge role-root';
+        badge.textContent = 'ROOT';
+    } else {
+        badge.className = 'role-badge role-user';
+        badge.textContent = 'USER';
+    }
+    showTab('dashboard');
+    term.writeln('\r\n\x1b[1;33m[NEXUS] Role check sent — see terminal output.\x1b[0m\r\n');
+}
+
+// Update role badge based on whoami output captured from terminal
+let captureWhoami = false;
+socket.on('term_output', (msg) => {
+    if (msg.data.includes('root')) {
+        document.getElementById('promptUser').textContent = '#';
+        const b = document.getElementById('roleBadge');
+        b.className = 'role-badge role-root'; b.textContent = 'ROOT';
+    }
+});
+
+// ── SYSTEM STATS ──
+let cpuHistory = [];
+let prevNet = null;
+
+async function fetchStats() {
+    try {
+        const data = await (await fetch('/api/stats')).json();
+        if (data.error) return;
+
+        // Bars
+        document.getElementById('cpuBar').style.width = data.cpu_percent + '%';
+        document.getElementById('cpuVal').textContent = data.cpu_percent.toFixed(1) + '%';
+        document.getElementById('ramBar').style.width = data.ram_percent + '%';
+        document.getElementById('ramVal').textContent = data.ram_percent.toFixed(1) + '% (' + data.ram_used_mb + '/' + data.ram_total_mb + ' MB)';
+        document.getElementById('diskBar').style.width = data.disk_percent + '%';
+        document.getElementById('diskVal').textContent = data.disk_percent.toFixed(1) + '% (' + data.disk_used_gb + '/' + data.disk_total_gb + ' GB)';
+
+        // Network totals
+        document.getElementById('netSent').textContent = data.net_sent_mb + ' MB';
+        document.getElementById('netRecv').textContent = data.net_recv_mb + ' MB';
+
+        // Network rates
+        if (prevNet) {
+            const dt = data.timestamp - prevNet.timestamp;
+            const sentRate = ((data.net_sent_mb - prevNet.net_sent_mb) * 1024 / dt).toFixed(1);
+            const recvRate = ((data.net_recv_mb - prevNet.net_recv_mb) * 1024 / dt).toFixed(1);
+            document.getElementById('netSentRate').textContent = Math.max(0, sentRate);
+            document.getElementById('netRecvRate').textContent = Math.max(0, recvRate);
+        }
+        prevNet = data;
+
+        // Mini CPU graph
+        cpuHistory.push(data.cpu_percent);
+        if (cpuHistory.length > 60) cpuHistory.shift();
+        drawCpuGraph();
+
+        // Task view mini bars
+        document.getElementById('t-cpu').textContent = data.cpu_percent.toFixed(1) + '%';
+        document.getElementById('t-ram').textContent = data.ram_percent.toFixed(1) + '%';
+        document.getElementById('t-disk').textContent = data.disk_percent.toFixed(1) + '%';
+
+        const now = new Date();
+        document.getElementById('statsUpdated').textContent = now.toTimeString().slice(0,8);
+    } catch (e) {}
+}
+
+function drawCpuGraph() {
+    const pts = cpuHistory;
+    if (pts.length < 2) return;
+    const w = 200, h = 50;
+    const points = pts.map((v, i) => {
+        const x = (i / (pts.length - 1)) * w;
+        const y = h - (v / 100) * h;
+        return x + ',' + y;
+    }).join(' ');
+    document.getElementById('cpuLine').setAttribute('points', points);
+}
+
+setInterval(fetchStats, 2000);
+fetchStats();
+
+// ── ARSENAL ──
+let toolModalInst;
+function openToolModal(idx) {
+    if (!toolModalInst) toolModalInst = new bootstrap.Modal(document.getElementById('toolModal'));
+    const t = arsenalTools[idx];
+    document.getElementById('modalToolTitle').innerText = t.name;
+    document.getElementById('modalToolManual').innerText = t.manual;
+    document.getElementById('modalToolUseCases').innerHTML = t.use_cases.map(u => `<li>${u}</li>`).join('');
+    document.getElementById('btnClone').onclick = () => {
+        toolModalInst.hide();
+        runCmd(`cd ~ && git clone ${t.url}`);
+    };
+    document.getElementById('btnLaunch').onclick = () => {
+        toolModalInst.hide();
+        // Spawn isolated session then run the tool
+        socket.emit('new_session');
+        sessionCount++;
+        updateSessionUI();
+        setTimeout(() => socket.emit('run_command', { command: t.run_cmd, is_raw: false }), 800);
+        showTab('dashboard');
+    };
+    toolModalInst.show();
+}
+
+// ── FILE MANAGER ──
+let currentDir = '.';
+let chmodTargetPath = '';
+
+async function loadPath(path) {
+    currentDir = path;
+    const data = await (await fetch('/api/files', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path })
+    })).json();
+    if (data.status !== 'success') return;
+    document.getElementById('currentPath').innerText = data.current_path;
+    renderFileList(data.items, data.current_path);
+}
+
+function formatSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / 1048576).toFixed(1) + ' MB';
+}
+
+function formatDate(ts) {
+    if (!ts) return '';
+    const d = new Date(ts * 1000);
+    return d.toLocaleDateString() + ' ' + d.toTimeString().slice(0, 5);
+}
+
+function getFileIcon(item) {
+    if (item.is_dir) return '<i class="fas fa-folder file-icon text-warning"></i>';
+    const ext = item.name.split('.').pop().toLowerCase();
+    const map = { py: 'fa-python', js: 'fa-js', html: 'fa-html5', css: 'fa-css3', sh: 'fa-terminal', txt: 'fa-file-alt', md: 'fa-file-alt', json: 'fa-file-code', zip: 'fa-file-archive', gz: 'fa-file-archive', tar: 'fa-file-archive', png: 'fa-file-image', jpg: 'fa-file-image', jpeg: 'fa-file-image', gif: 'fa-file-image', pdf: 'fa-file-pdf' };
+    return `<i class="fab ${map[ext] || 'fas fa-file-code'} file-icon" style="color:var(--info)"></i>`;
+}
+
+function renderFileList(items, currentPath) {
+    const el = document.getElementById('fileList');
+    const escapedParent = (currentPath + '/..').replace(/'/g, "\\'");
+    let html = `<div class="file-row" onclick="loadPath('${escapedParent}')">
+        <i class="fas fa-arrow-left file-icon" style="color:var(--muted)"></i>
+        <span class="file-name" style="color:var(--muted)">.. (back)</span></div>`;
+    items.forEach(item => {
+        const ep = item.path.replace(/\\/g, '/').replace(/'/g, "\\'");
+        const action = item.is_dir ? `loadPath('${ep}')` : `openEditor('${ep}')`;
+        const isArchive = /\.(zip|tar\.gz|tgz|tar\.bz2|tar)$/i.test(item.name);
+        html += `<div class="file-row">
+            <span onclick="${action}">${getFileIcon(item)}</span>
+            <span class="file-name" onclick="${action}">${item.name}</span>
+            <span class="file-meta">
+                <span>${formatSize(item.size)}</span><br>
+                <span class="file-perms">${item.permissions || ''}</span>
+            </span>
+            <div class="file-actions">
+                ${!item.is_dir ? `<button class="file-btn" onclick="openEditor('${ep}')" title="Edit"><i class="fas fa-edit"></i></button>` : ''}
+                <button class="file-btn" onclick="openChmod('${ep}','${item.octal || ''}','${item.name}')" title="Permissions"><i class="fas fa-lock"></i></button>
+                ${isArchive ? `<button class="file-btn" onclick="unzipFile('${ep}')" title="Extract"><i class="fas fa-box-open"></i></button>` : `<button class="file-btn" onclick="zipFile('${ep}')" title="Zip"><i class="fas fa-file-archive"></i></button>`}
+                <button class="file-btn danger" onclick="deleteItem('${ep}')" title="Delete"><i class="fas fa-trash-alt"></i></button>
+            </div>
+        </div>`;
+    });
+    el.innerHTML = html;
+}
+
+async function searchFiles() {
+    const q = document.getElementById('fileSearchInput').value.trim();
+    if (!q) { loadPath(currentDir); return; }
+    const data = await (await fetch('/api/file-search', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: currentDir, query: q })
+    })).json();
+    if (data.status !== 'success') return;
+    document.getElementById('currentPath').innerText = `Search: "${q}" in ${currentDir}`;
+    renderFileList(data.results, currentDir);
+}
+
+function clearSearch() {
+    document.getElementById('fileSearchInput').value = '';
+    loadPath(currentDir);
+}
+
+async function uploadFile() {
+    const fi = document.getElementById('fileUploadInput');
+    if (!fi.files[0]) return;
+    const fd = new FormData();
+    fd.append('file', fi.files[0]);
+    fd.append('path', currentDir);
+    const res = await (await fetch('/api/upload', { method: 'POST', body: fd })).json();
+    if (res.status === 'success') loadPath(currentDir);
+    else alert('Upload error: ' + res.message);
+    fi.value = '';
+}
+
+async function deleteItem(path) {
+    if (confirm('Delete ' + path.split('/').pop() + '?')) {
+        await fetch('/api/file-op', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'delete', path }) });
+        loadPath(currentDir);
+    }
+}
+
+async function createItem(type) {
+    const name = prompt('Enter ' + type + ' name:');
+    if (name) {
+        await fetch('/api/file-op', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: type === 'folder' ? 'create_folder' : 'create_file', path: currentDir + '/' + name }) });
+        loadPath(currentDir);
+    }
+}
+
+async function zipFile(path) {
+    const res = await (await fetch('/api/file-op', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'zip', path }) })).json();
+    if (res.status === 'success') { loadPath(currentDir); }
+    else alert('Zip error: ' + res.message);
+}
+
+async function unzipFile(path) {
+    const res = await (await fetch('/api/file-op', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'unzip', path, dest: currentDir }) })).json();
+    if (res.status === 'success') loadPath(currentDir);
+    else alert('Extract error: ' + res.message);
+}
+
+let chmodModal;
+function openChmod(path, octal, name) {
+    if (!chmodModal) chmodModal = new bootstrap.Modal(document.getElementById('chmodModal'));
+    chmodTargetPath = path;
+    document.getElementById('chmodFilename').textContent = name;
+    document.getElementById('chmodCurrent').textContent = octal;
+    document.getElementById('chmodInput').value = (octal || '').replace('0o', '');
+    chmodModal.show();
+}
+
+async function applyChmod() {
+    const mode = document.getElementById('chmodInput').value.trim();
+    if (!mode) return;
+    const res = await (await fetch('/api/chmod', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: chmodTargetPath, mode }) })).json();
+    chmodModal.hide();
+    if (res.status === 'success') loadPath(currentDir);
+    else alert('chmod error: ' + res.message);
+}
+
+// ── EDITOR ──
+let editorModal;
+async function openEditor(path) {
+    if (!editorModal) editorModal = new bootstrap.Modal(document.getElementById('editorModal'));
+    const data = await (await fetch('/api/file-op', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'read', path }) })).json();
+    if (data.status === 'success') {
+        document.getElementById('fileEditor').value = data.content;
+        document.getElementById('editingPath').value = path;
+        document.getElementById('editorTitle').textContent = path.split('/').pop();
+        editorModal.show();
+    } else alert('Cannot read file: ' + data.message);
+}
+
+async function saveFile() {
+    await fetch('/api/file-op', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'save', path: document.getElementById('editingPath').value, content: document.getElementById('fileEditor').value }) });
+    editorModal.hide();
+}
+
+// ── TASK MANAGER ──
+async function loadTasks() {
+    try {
+        const procs = await (await fetch('/api/processes')).json();
+        const list = document.getElementById('taskList');
+        list.innerHTML = procs.map(p => {
+            const cpu = (p.cpu_percent || 0).toFixed(1);
+            const mem = (p.memory_percent || 0).toFixed(1);
+            const status = p.status || 'unknown';
+            const sc = status === 'running' ? 's-running' : status === 'sleeping' ? 's-sleeping' : 's-stopped';
+            return `<tr>
+                <td>${p.pid}</td>
+                <td style="max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${p.name}">${p.name || '-'}</td>
+                <td>
+                    <span>${cpu}%</span>
+                    <div class="cpu-bar"><div class="cpu-fill" style="width:${Math.min(cpu, 100)}%"></div></div>
+                </td>
+                <td>${mem}%</td>
+                <td><span class="status-badge ${sc}">${status}</span></td>
+                <td>${p.num_threads || '-'}</td>
+                <td>${p.pid !== 'ERR' ? `<button class="btn btn-sm" style="font-size:.65rem;padding:2px 8px;background:rgba(255,51,51,.1);border:1px solid var(--danger);color:var(--danger)" onclick="killProc(${p.pid})">Kill</button>` : '<span style="color:var(--muted);font-size:.7rem">-</span>'}</td>
+            </tr>`;
+        }).join('');
+    } catch (e) {}
+}
+
+async function killProc(pid) {
+    if (confirm('Kill process ' + pid + '?')) {
+        await fetch('/api/kill', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pid }) });
+        loadTasks();
+    }
+}
+
+// ── UI NAVIGATION ──
+function toggleSidebar() {
+    document.getElementById('sidebar').classList.toggle('active');
+    document.getElementById('overlay').classList.toggle('active');
+}
+
+function showTab(tab) {
+    activeTab = tab;
+    document.querySelectorAll('.view-section').forEach(el => el.classList.add('d-none'));
+    document.querySelectorAll('.nav-link').forEach(el => el.classList.remove('active'));
+    document.getElementById(`view-${tab}`).classList.remove('d-none');
+    document.getElementById('cmdBar').style.display = (tab === 'dashboard') ? 'flex' : 'none';
+
+    const links = document.querySelectorAll('.nav-link');
+    const map = { dashboard: 0, files: 1, tasks: 2, arsenal: 3 };
+    if (map[tab] !== undefined) links[map[tab]].classList.add('active');
+
+    if (tab === 'dashboard') setTimeout(() => { fitAddon.fit(); term.focus(); }, 150);
+    if (tab === 'files') loadPath(currentDir);
+    if (tab === 'tasks') loadTasks();
+
+    if (window.innerWidth < 768 && document.getElementById('sidebar').classList.contains('active')) toggleSidebar();
+}
+
+window.onload = () => { loadPath('.'); term.focus(); fetchStats(); };
+</script>
+</body>
+</html>
